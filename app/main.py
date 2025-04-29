@@ -78,18 +78,14 @@ def process_batch(job_id, filepaths, session_data):
         active_jobs[job_id]['total'] = len(filepaths)
         
         results = []
-        
-        # Process images in batches for better performance
         batch_size = app.config['BATCH_SIZE']
         for i in range(0, len(filepaths), batch_size):
             batch = filepaths[i:i+batch_size]
             processed_images = []
             
-            # First, process all images in the batch
             for filepath in batch:
                 filename = os.path.basename(filepath)
                 try:
-                    # Validate the image
                     if not validate_image(filepath):
                         results.append({
                             'filename': filename,
@@ -98,7 +94,6 @@ def process_batch(job_id, filepaths, session_data):
                         })
                         continue
                     
-                    # Process the image and extract metadata
                     processed_image = process_image(filepath)
                     metadata = extract_metadata(filepath)
                     processed_images.append((filename, filepath, processed_image, metadata))
@@ -111,11 +106,9 @@ def process_batch(job_id, filepaths, session_data):
                         'message': str(e)
                     })
             
-            # Then, analyze the batch with ML models
             if processed_images:
                 batch_analyses = analyze_batch([img for _, _, img, _ in processed_images], models)
                 
-                # Process the results
                 for idx, (filename, filepath, _, metadata) in enumerate(processed_images):
                     if idx < len(batch_analyses):
                         analysis = batch_analyses[idx]
@@ -146,12 +139,10 @@ def process_batch(job_id, filepaths, session_data):
 
 @app.route('/')
 def index():
-    """Render the main page"""
     return render_template('index.html')
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    """Handle image upload and start processing"""
     if 'files[]' not in request.files:
         return jsonify({'error': 'No files uploaded'}), 400
     
@@ -160,14 +151,10 @@ def upload_file():
     if not files or files[0].filename == '':
         return jsonify({'error': 'No selected files'}), 400
     
-    # Generate a unique job ID
     job_id = str(uuid.uuid4())
-    
-    # Create a directory for this job
     job_dir = os.path.join(app.config['UPLOAD_FOLDER'], job_id)
     os.makedirs(job_dir, exist_ok=True)
     
-    # Save uploaded files
     filepaths = []
     for file in files:
         if file and allowed_file(file.filename):
@@ -179,7 +166,6 @@ def upload_file():
     if not filepaths:
         return jsonify({'error': 'No valid files were uploaded'}), 400
     
-    # Get session data for customized processing
     session_data = {
         'threshold': float(request.form.get('threshold', 7.0)),
         'prefer_faces': request.form.get('prefer_faces', 'true') == 'true',
@@ -187,7 +173,6 @@ def upload_file():
         'prefer_exposure': request.form.get('prefer_exposure', 'true') == 'true'
     }
     
-    # Initialize the job status
     active_jobs[job_id] = {
         'id': job_id,
         'status': 'starting',
@@ -198,7 +183,6 @@ def upload_file():
         'session_data': session_data
     }
     
-    # Start background processing
     thread = threading.Thread(target=process_batch, args=(job_id, filepaths, session_data))
     thread.daemon = True
     thread.start()
@@ -212,21 +196,16 @@ def upload_file():
 
 @app.route('/job/<job_id>')
 def job_status(job_id):
-    """Render the job status page"""
     if job_id not in active_jobs:
         return render_template('error.html', message='Job not found'), 404
-    
     return render_template('job_status.html', job_id=job_id)
 
 @app.route('/api/job/<job_id>')
 def api_job_status(job_id):
-    """API endpoint to get job status"""
     if job_id not in active_jobs:
         return jsonify({'error': 'Job not found'}), 404
     
     job = active_jobs[job_id]
-    
-    # If job is completed, include the results
     if job['status'] == 'completed':
         return jsonify({
             'id': job_id,
@@ -238,7 +217,6 @@ def api_job_status(job_id):
             'completed_at': job['completed_at']
         })
     
-    # Otherwise just send the status info
     return jsonify({
         'id': job_id,
         'status': job['status'],
@@ -249,15 +227,12 @@ def api_job_status(job_id):
 
 @app.route('/results/<job_id>')
 def results(job_id):
-    """Display processing results for a job"""
     if job_id not in active_jobs or active_jobs[job_id]['status'] != 'completed':
         return redirect(url_for('job_status', job_id=job_id))
-    
     return render_template('results.html', job_id=job_id, results=active_jobs[job_id]['results'])
 
 @app.route('/api/settings', methods=['GET', 'POST'])
 def api_settings():
-    """API endpoint to get or update culling settings"""
     if request.method == 'POST':
         data = request.json
         session['threshold'] = float(data.get('threshold', 7.0))
@@ -266,7 +241,6 @@ def api_settings():
         session['prefer_exposure'] = data.get('prefer_exposure', True)
         return jsonify({'status': 'success', 'message': 'Settings updated'})
     
-    # GET - return current settings
     return jsonify({
         'threshold': session.get('threshold', 7.0),
         'prefer_faces': session.get('prefer_faces', True),
@@ -276,7 +250,6 @@ def api_settings():
 
 @app.route('/api/status')
 def api_status():
-    """API endpoint to check service status"""
     return jsonify({
         'status': 'online',
         'version': '1.1.0',
@@ -286,27 +259,25 @@ def api_status():
 
 @app.route('/batch_upload')
 def batch_upload():
-    """Render the batch upload page"""
     return render_template('batch_upload.html')
 
 @app.route('/settings')
 def settings():
-    """Render the settings page"""
     return render_template('settings.html')
 
 @app.errorhandler(413)
 def request_entity_too_large(error):
-    """Handle file too large error"""
     return jsonify({'error': 'File too large'}), 413
 
 @app.errorhandler(500)
 def server_error(error):
-    """Handle server errors"""
     logger.error(f"Server error: {str(error)}")
     return jsonify({'error': 'Server error', 'message': str(error)}), 500
 
+# ✅ For local dev AND Render deployment (Gunicorn needs this)
 if __name__ == '__main__':
-    # For local development
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV', 'development') == 'development'
     app.run(debug=debug, host='0.0.0.0', port=port)
+
+application = app  # Required for Render (Gunicorn looks for this)
