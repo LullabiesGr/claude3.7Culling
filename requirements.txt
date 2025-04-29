@@ -1,1 +1,6 @@
+flask
+opencv-python
+Pillow
+torch
+transformers
 
